@@ -16,6 +16,7 @@ const paninLegend = document.getElementById('paninLegend');
 const paninTable = document.getElementById('paninTable');
 const tableOut = document.getElementById('tableOut');
 const tableIn = document.getElementById('tableIn');
+const tableBazaar = document.getElementById('tableBazaar');
 
 // Buttons for actions
 const exportOrderBtn = document.getElementById('exportOrder');
@@ -26,6 +27,8 @@ const exportOutBtn = document.getElementById('exportOut');
 const deleteAllOutBtn = document.getElementById('deleteAllOut');
 const exportInBtn = document.getElementById('exportIn');
 const deleteAllInBtn = document.getElementById('deleteAllIn');
+const exportBazaarBtn = document.getElementById('exportBazaar');
+const deleteAllBazaarBtn = document.getElementById('deleteAllBazaar');
 
 const charts = {};
 
@@ -34,6 +37,7 @@ const KEY_ORDER = 'order';
 const KEY_PANIN = 'panin';
 const KEY_OUT = 'irKeluar';
 const KEY_IN = 'irMasuk';
+const KEY_BAZAAR = 'bazaar';
 
 // ===== Form definitions =====
 const formDefs = {
@@ -68,6 +72,12 @@ const formDefs = {
     {k:'Qty SKU', label:'Qty SKU', type:'number'},
     {k:'Qty Pcs', label:'Qty Pcs', type:'number'},
     {k:'Note', label:'Keterangan (opsional)', type:'text'}
+  ],
+  bazaar: [
+    {k:'Nama Bazaar', label:'Nama Bazaar', type:'text'},
+    {k:'Tanggal Mulai Event', label:'Tanggal Mulai Event', type:'date'},
+    {k:'Tanggal Selesai Event', label:'Tanggal Selesai Event', type:'date'},
+    {k:'Progres Event', label:'Progres Event', type:'text'}
   ]
 };
 
@@ -108,7 +118,7 @@ function renderForm(cat){
     input.name = def.k;
     input.id = def.k.replace(/\s+/g, '_');
     input.placeholder = def.label;
-    input.type = (def.type === 'number' || def.type === 'percent') ? 'number' : 'text';
+    input.type = (def.type === 'number' || def.type === 'percent' || def.type === 'date') ? def.type : 'text';
     if(def.readonly) { input.readOnly = true; input.style.background = '#f0fdfa'; }
     formTag.appendChild(label);
     formTag.appendChild(input);
@@ -124,17 +134,27 @@ function renderForm(cat){
   dynamicForm.appendChild(formEl);
 
   // auto % calc for order & panin
-  if(cat === 'order' || cat === 'panin'){
-    const qty = formTag.querySelector('input[name="Qty Released"]');
-    const done = formTag.querySelector('input[name="Done (Qty)"]');
-    const pct = formTag.querySelector('input[name="%Done"]');
-    const calc = ()=> {
-      const qv = Number(qty?.value) || 0;
-      const dv = Number(done?.value) || 0;
-      if(pct) pct.value = qv ? ((dv / qv) * 100).toFixed(2) : 0;
-    };
-    if(qty && done){ qty.addEventListener('input', calc); done.addEventListener('input', calc); }
+ // auto % + pending calc for order & panin
+if(cat === 'order' || cat === 'panin'){
+  const totalSO = formTag.querySelector('input[name="Total SO"]');
+  const doneSO = formTag.querySelector('input[name="Done (SO)"]');
+  const pendingSO = formTag.querySelector('input[name="Pending (SO)"]');
+  const pct = formTag.querySelector('input[name="%Done"]');
+
+  const calc = ()=> {
+    const total = Number(totalSO?.value) || 0;
+    const done = Number(doneSO?.value) || 0;
+    const pending = total - done;
+    if(pendingSO) pendingSO.value = pending >= 0 ? pending : 0;
+    if(pct) pct.value = total ? ((done / total) * 100).toFixed(2) : 0;
+  };
+
+  if(totalSO && doneSO){
+    totalSO.addEventListener('input', calc);
+    doneSO.addEventListener('input', calc);
   }
+}
+
 
   // handle submit
   formTag.addEventListener('submit', (ev)=>{
@@ -142,19 +162,18 @@ function renderForm(cat){
     const fd = new FormData(formTag);
     const entry = { id: Date.now(), Tanggal: new Date().toLocaleDateString('id-ID') };
     for(const [k,v] of fd.entries()){
-      // store numeric as numbers for number/percent fields
       const def = defs.find(d=> d.k === k);
       if(def && (def.type === 'number' || def.type === 'percent')) entry[k] = v === '' ? 0 : Number(v);
       else entry[k] = v;
     }
-    // save to corresponding key
     if(cat === 'order'){ const arr = load(KEY_ORDER); arr.push(entry); save(KEY_ORDER, arr); }
     if(cat === 'panin'){ const arr = load(KEY_PANIN); arr.push(entry); save(KEY_PANIN, arr); }
     if(cat === 'irKeluar'){ const arr = load(KEY_OUT); arr.push(entry); save(KEY_OUT, arr); }
     if(cat === 'irMasuk'){ const arr = load(KEY_IN); arr.push(entry); save(KEY_IN, arr); }
+    if(cat === 'bazaar'){ const arr = load(KEY_BAZAAR); arr.push(entry); save(KEY_BAZAAR, arr); }
 
     alert('✅ Data tersimpan');
-    renderForm(cat); // reset
+    renderForm(cat);
     populateTanggalOptions();
     updateDashboard();
   });
@@ -162,9 +181,9 @@ function renderForm(cat){
   resetBtn.addEventListener('click', ()=> renderForm(cat));
 }
 
-// ===== Populate tanggal options (from all categories) =====
+// ===== Populate tanggal options =====
 function populateTanggalOptions(){
-  const all = [...load(KEY_ORDER), ...load(KEY_PANIN), ...load(KEY_OUT), ...load(KEY_IN)];
+  const all = [...load(KEY_ORDER), ...load(KEY_PANIN), ...load(KEY_OUT), ...load(KEY_IN), ...load(KEY_BAZAAR)];
   const dates = [...new Set(all.map(x => x.Tanggal))];
   filterTanggal.innerHTML = `<option value="all">📅 Semua Tanggal</option>` + dates.map(d => `<option value="${d}">${d}</option>`).join('');
 }
@@ -189,51 +208,30 @@ function createPie(ctx, done, pending, colorDone='#26c6da', colorPend='#ffb74d')
 }
 
 function renderOrderCard(list){
-  // chart
   const ctx = document.getElementById('chartOrder').getContext('2d');
   if(charts.order) charts.order.destroy();
   const done = list.reduce((s,r)=> s + (Number(r['Done (Qty)'])||0), 0);
   const total = list.reduce((s,r)=> s + (Number(r['Qty Released'])||0), 0);
   const pending = Math.max(0, total - done);
-  charts.order = createPie(ctx, done, pending, '#26c6da', '#ffb74d');
+  charts.order = createPie(ctx, done, pending);
 
-  // legend + list
-  orderLegend.innerHTML = '';
-  const title = document.createElement('div'); title.innerHTML = '<strong>Legend & Detail</strong>'; orderLegend.appendChild(title);
-  const doneItem = document.createElement('div'); doneItem.className='legend-item'; doneItem.innerHTML = `<div class="legend-color" style="background:#26c6da"></div><div>Done</div>`; orderLegend.appendChild(doneItem);
-  const pendItem = document.createElement('div'); pendItem.className='legend-item'; pendItem.innerHTML = `<div class="legend-color" style="background:#ffb74d"></div><div>Pending</div>`; orderLegend.appendChild(pendItem);
-  orderLegend.appendChild(document.createElement('hr'));
+ 
 
-  if(!list.length){ const p=document.createElement('div'); p.textContent='Belum ada data untuk tanggal ini.'; orderLegend.appendChild(p); }
-  else {
-    list.slice().reverse().forEach(item=>{
-      const li = document.createElement('div'); li.className='list-item';
-      li.innerHTML = `<strong>${item.Note || '—'}</strong><div style="font-size:12px;color:#555;margin-top:4px">
-        TotalSO: ${item['Total SO']||0} • Qty: ${item['Qty Released']||0} • Done: ${item['Done (Qty)']||0} • % ${item['%Done']||0}%</div>`;
-      orderLegend.appendChild(li);
-    });
-  }
+ 
 
-  // table
   const thead = orderTable.querySelector('thead');
   const tbody = orderTable.querySelector('tbody');
   if(!list.length){ thead.innerHTML=''; tbody.innerHTML=`<tr><td colspan="9">Belum ada data</td></tr>`; return; }
   const headers = ['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'];
   thead.innerHTML = '<tr>' + headers.map(h=> `<th>${h}</th>`).join('') + '<th>Aksi</th></tr>';
-  tbody.innerHTML = list.map(item=> {
-    return `<tr>
-      ${headers.map(h=> `<td>${item[h] || ''}</td>`).join('')}
-      <td><button class="deleteBtn" data-cat="order" data-id="${item.id}">🗑️</button></td>
-    </tr>`;
-  }).join('');
+  tbody.innerHTML = list.map(item=> `<tr>${headers.map(h=> `<td>${item[h]||''}</td>`).join('')}<td><button class="deleteBtn" data-cat="order" data-id="${item.id}">🗑️</button></td></tr>`).join('');
   tbody.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', (ev)=>{
-      const id = Number(ev.currentTarget.dataset.id);
+    btn.addEventListener('click', e=>{
+      const id = +e.currentTarget.dataset.id;
       let arr = load(KEY_ORDER);
-      arr = arr.filter(r=> r.id !== id);
+      arr = arr.filter(r=>r.id!==id);
       save(KEY_ORDER, arr);
-      populateTanggalOptions();
-      updateDashboard();
+      populateTanggalOptions(); updateDashboard();
       alert('🗑️ Entry dihapus.');
     });
   });
@@ -247,162 +245,105 @@ function renderPaninCard(list){
   const pending = Math.max(0, total - done);
   charts.panin = createPie(ctx, done, pending, '#06b6a4', '#ffd27f');
 
-  // legend + list
-  paninLegend.innerHTML = '';
-  const title = document.createElement('div'); title.innerHTML = '<strong>Legend & Detail</strong>'; paninLegend.appendChild(title);
-  const doneItem = document.createElement('div'); doneItem.className='legend-item'; doneItem.innerHTML = `<div class="legend-color" style="background:#06b6a4"></div><div>Done</div>`; paninLegend.appendChild(doneItem);
-  const pendItem = document.createElement('div'); pendItem.className='legend-item'; pendItem.innerHTML = `<div class="legend-color" style="background:#ffd27f"></div><div>Pending</div>`; paninLegend.appendChild(pendItem);
-  paninLegend.appendChild(document.createElement('hr'));
+ 
 
-  if(!list.length){ const p=document.createElement('div'); p.textContent='Belum ada data untuk tanggal ini.'; paninLegend.appendChild(p); }
-  else {
-    list.slice().reverse().forEach(item=>{
-      const li = document.createElement('div'); li.className='list-item';
-      li.innerHTML = `<strong>${item.Note || '—'}</strong><div style="font-size:12px;color:#555;margin-top:4px">
-        TotalSO: ${item['Total SO']||0} • Qty: ${item['Qty Released']||0} • Done: ${item['Done (Qty)']||0} • % ${item['%Done']||0}%</div>`;
-      paninLegend.appendChild(li);
-    });
-  }
+  
 
-  // table
   const thead = paninTable.querySelector('thead');
   const tbody = paninTable.querySelector('tbody');
-  if(!list.length){ thead.innerHTML=''; tbody.innerHTML=`<tr><td colspan="9">Belum ada data</td></tr>`; return; }
+  if(!list.length){ thead.innerHTML=''; tbody.innerHTML='<tr><td colspan="9">Belum ada data</td></tr>'; return; }
   const headers = ['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'];
-  thead.innerHTML = '<tr>' + headers.map(h=> `<th>${h}</th>`).join('') + '<th>Aksi</th></tr>';
-  tbody.innerHTML = list.map(item=> {
-    return `<tr>
-      ${headers.map(h=> `<td>${item[h] || ''}</td>`).join('')}
-      <td><button class="deleteBtn" data-cat="panin" data-id="${item.id}">🗑️</button></td>
-    </tr>`;
-  }).join('');
+  thead.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'<th>Aksi</th></tr>';
+  tbody.innerHTML = list.map(item=> `<tr>${headers.map(h=> `<td>${item[h]||''}</td>`).join('')}<td><button class="deleteBtn" data-cat="panin" data-id="${item.id}">🗑️</button></td></tr>`).join('');
   tbody.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', (ev)=>{
-      const id = Number(ev.currentTarget.dataset.id);
+    btn.addEventListener('click', e=>{
+      const id = +e.currentTarget.dataset.id;
       let arr = load(KEY_PANIN);
-      arr = arr.filter(r=> r.id !== id);
+      arr = arr.filter(r=>r.id!==id);
       save(KEY_PANIN, arr);
-      populateTanggalOptions();
-      updateDashboard();
+      populateTanggalOptions(); updateDashboard();
       alert('🗑️ Entry dihapus.');
     });
   });
 }
 
-// ===== Render IR tables (out/in) =====
 function renderIrTable(id, list, keyName){
   const table = document.getElementById(id);
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
-
-  if(!list.length){ thead.innerHTML=''; tbody.innerHTML=`<tr><td colspan="8">Belum ada data</td></tr>`; return; }
-
-  // collect headers from object keys (preserve order)
-  const headers = ['Tanggal', ...Object.keys(list[0]).filter(k=> k !== 'Tanggal' && k !== 'id')]; 
-  thead.innerHTML = '<tr>' + headers.map(h=> `<th>${h}</th>`).join('') + '<th>Aksi</th></tr>';
-
-  tbody.innerHTML = list.map(item=>{
-    return `<tr>
-      ${headers.map(h=> `<td>${item[h] || ''}</td>`).join('')}
-      <td><button class="deleteBtn" data-key="${keyName}" data-id="${item.id}">🗑️</button></td>
-    </tr>`;
-  }).join('');
-
+  if(!list.length){ thead.innerHTML=''; tbody.innerHTML='<tr><td colspan="8">Belum ada data</td></tr>'; return; }
+  const headers = ['Tanggal', ...Object.keys(list[0]).filter(k=> k!=='Tanggal' && k!=='id')];
+  thead.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'<th>Aksi</th></tr>';
+  tbody.innerHTML = list.map(item=> `<tr>${headers.map(h=> `<td>${item[h]||''}</td>`).join('')}<td><button class="deleteBtn" data-key="${keyName}" data-id="${item.id}">🗑️</button></td></tr>`).join('');
   tbody.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', (ev)=>{
-      const id = Number(ev.currentTarget.dataset.id);
-      const key = ev.currentTarget.dataset.key;
+    btn.addEventListener('click', e=>{
+      const id = +e.currentTarget.dataset.id;
+      const key = e.currentTarget.dataset.key;
       let arr = load(key);
-      arr = arr.filter(r=> r.id !== id);
+      arr = arr.filter(r=>r.id!==id);
       save(key, arr);
-      populateTanggalOptions();
-      updateDashboard();
+      populateTanggalOptions(); updateDashboard();
       alert('🗑️ Entry dihapus.');
     });
   });
 }
 
-// ===== Update dashboard (filter by tanggal) =====
+function renderBazaarTable(list){
+  const table = document.getElementById('tableBazaar');
+  const thead = table.querySelector('thead');
+  const tbody = table.querySelector('tbody');
+  if(!list.length){ thead.innerHTML=''; tbody.innerHTML='<tr><td colspan="6">Belum ada data</td></tr>'; return; }
+  const headers = ['Tanggal','Nama Bazaar','Tanggal Mulai Event','Tanggal Selesai Event','Progres Event'];
+  thead.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'<th>Aksi</th></tr>';
+  tbody.innerHTML = list.map(item=> `<tr>${headers.map(h=> `<td>${item[h]||''}</td>`).join('')}<td><button class="deleteBtn" data-key="${KEY_BAZAAR}" data-id="${item.id}">🗑️</button></td></tr>`).join('');
+  tbody.querySelectorAll('.deleteBtn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const id = +e.currentTarget.dataset.id;
+      let arr = load(KEY_BAZAAR);
+      arr = arr.filter(r=>r.id!==id);
+      save(KEY_BAZAAR, arr);
+      populateTanggalOptions(); updateDashboard();
+      alert('🗑️ Data Bazaar dihapus.');
+    });
+  });
+}
+
+// ===== Update dashboard =====
 function updateDashboard(){
   const selected = filterTanggal.value || 'all';
   const getFiltered = (arrKey) => {
     const arr = load(arrKey);
-    return selected === 'all' ? arr : arr.filter(x => x.Tanggal === selected);
+    return selected==='all' ? arr : arr.filter(x=>x.Tanggal===selected);
   };
 
-  const orderList = getFiltered(KEY_ORDER);
-  const paninList = getFiltered(KEY_PANIN);
-  const outList = getFiltered(KEY_OUT);
-  const inList = getFiltered(KEY_IN);
-
-  renderOrderCard(orderList);
-  renderPaninCard(paninList);
-  renderIrTable('tableOut', outList, KEY_OUT);
-  renderIrTable('tableIn', inList, KEY_IN);
+  renderOrderCard(getFiltered(KEY_ORDER));
+  renderPaninCard(getFiltered(KEY_PANIN));
+  renderIrTable('tableOut', getFiltered(KEY_OUT), KEY_OUT);
+  renderIrTable('tableIn', getFiltered(KEY_IN), KEY_IN);
+  renderBazaarTable(getFiltered(KEY_BAZAAR));
 }
 
-// ===== Delete all handlers & export handlers =====
-deleteAllOrderBtn.addEventListener('click', ()=> {
-  if(!confirm('Hapus semua Data Order?')) return;
-  save(KEY_ORDER, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data Order dihapus.');
-});
-deleteAllPaninBtn.addEventListener('click', ()=> {
-  if(!confirm('Hapus semua Data Panin?')) return;
-  save(KEY_PANIN, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data Panin dihapus.');
-});
-deleteAllOutBtn.addEventListener('click', ()=> {
-  if(!confirm('Hapus semua Data IR Keluar?')) return;
-  save(KEY_OUT, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data IR Keluar dihapus.');
-});
-deleteAllInBtn.addEventListener('click', ()=> {
-  if(!confirm('Hapus semua Data IR Masuk?')) return;
-  save(KEY_IN, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data IR Masuk dihapus.');
-});
+// ===== Delete all & export =====
+deleteAllOrderBtn.addEventListener('click', ()=>{ if(confirm('Hapus semua Data Order?')){ save(KEY_ORDER, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data Order dihapus.'); }});
+deleteAllPaninBtn.addEventListener('click', ()=>{ if(confirm('Hapus semua Data Panin?')){ save(KEY_PANIN, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data Panin dihapus.'); }});
+deleteAllOutBtn.addEventListener('click', ()=>{ if(confirm('Hapus semua Data IR Keluar?')){ save(KEY_OUT, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data IR Keluar dihapus.'); }});
+deleteAllInBtn.addEventListener('click', ()=>{ if(confirm('Hapus semua Data IR Masuk?')){ save(KEY_IN, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data IR Masuk dihapus.'); }});
+deleteAllBazaarBtn.addEventListener('click', ()=>{ if(confirm('Hapus semua Data Bazaar?')){ save(KEY_BAZAAR, []); populateTanggalOptions(); updateDashboard(); alert('Semua Data Bazaar dihapus.'); }});
 
-// export simple CSV helper
 function exportCSV(filename, headers, rows){
-  const csv = [headers.join(',')].concat(rows.map(r => headers.map(h => `"${(r[h]||'')}"`).join(','))).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
+  const csv = [headers.join(',')].concat(rows.map(r=> headers.map(h=>`"${(r[h]||'')}"`).join(','))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  link.click(); URL.revokeObjectURL(url);
 }
 
-exportOrderBtn.addEventListener('click', ()=>{
-  const arr = load(KEY_ORDER);
-  if(!arr.length){ alert('Belum ada data Order.'); return; }
-  const headers = ['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'];
-  exportCSV(`order_${new Date().toISOString().slice(0,10)}.csv`, headers, arr);
-});
-exportPaninBtn.addEventListener('click', ()=>{
-  const arr = load(KEY_PANIN);
-  if(!arr.length){ alert('Belum ada data Panin.'); return; }
-  const headers = ['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'];
-  exportCSV(`panin_${new Date().toISOString().slice(0,10)}.csv`, headers, arr);
-});
-exportOutBtn.addEventListener('click', ()=>{
-  const arr = load(KEY_OUT);
-  if(!arr.length){ alert('Belum ada data IR Keluar.'); return; }
-  // gather headers
-  const headers = ['Tanggal', ...Object.keys(arr[0]).filter(k=> k!=='Tanggal' && k!=='id')];
-  exportCSV(`irkeluar_${new Date().toISOString().slice(0,10)}.csv`, headers, arr);
-});
-exportInBtn.addEventListener('click', ()=>{
-  const arr = load(KEY_IN);
-  if(!arr.length){ alert('Belum ada data IR Masuk.'); return; }
-  const headers = ['Tanggal', ...Object.keys(arr[0]).filter(k=> k!=='Tanggal' && k!=='id')];
-  exportCSV(`irmasuk_${new Date().toISOString().slice(0,10)}.csv`, headers, arr);
-});
-
-// ===== Events: filter / refresh =====
-filterTanggal.addEventListener('change', updateDashboard);
-refreshBtn.addEventListener('click', updateDashboard);
+exportOrderBtn.addEventListener('click', ()=>{ const arr = load(KEY_ORDER); if(!arr.length) return alert('Belum ada data Order.'); exportCSV('order.csv',['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'],arr); });
+exportPaninBtn.addEventListener('click', ()=>{ const arr = load(KEY_PANIN); if(!arr.length) return alert('Belum ada data Panin.'); exportCSV('panin.csv',['Tanggal','Total SO','Qty Released','Done (SO)','Done (Qty)','Pending (SO)','%Done','Note'],arr); });
+exportOutBtn.addEventListener('click', ()=>{ const arr = load(KEY_OUT); if(!arr.length) return alert('Belum ada data IR Keluar.'); const h=['Tanggal',...Object.keys(arr[0]).filter(k=>k!=='Tanggal'&&k!=='id')]; exportCSV('ir_keluar.csv',h,arr); });
+exportInBtn.addEventListener('click', ()=>{ const arr = load(KEY_IN); if(!arr.length) return alert('Belum ada data IR Masuk.'); const h=['Tanggal',...Object.keys(arr[0]).filter(k=>k!=='Tanggal'&&k!=='id')]; exportCSV('ir_masuk.csv',h,arr); });
+exportBazaarBtn.addEventListener('click', ()=>{ const arr = load(KEY_BAZAAR); if(!arr.length) return alert('Belum ada data Bazaar.'); exportCSV('bazaar.csv',['Tanggal','Nama Bazaar','Tanggal Mulai Event','Tanggal Selesai Event','Progres Event'],arr); });
 
 // ===== INIT =====
 populateTanggalOptions();
