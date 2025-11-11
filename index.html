@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dashboard Report — Full</title>
+  <title>Dashboard Bazaar Ops</title>
 
-  <!-- Chart.js + DataLabels -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 
@@ -13,26 +12,37 @@
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
-      <h2>📊 Dashboard Bazaar Ops</h2>
-      <nav>
-        <button id="navDashboard" class="active">Dashboard</button>
-        <button id="navInput">Input Data</button>
-      </nav>
-    </aside>
+   <aside class="sidebar">
+  <h2>📊 Dashboard Bazaar Ops</h2>
+  <nav>
+    <button id="navDashboard" class="active">Dashboard</button>
+    <button id="navInput">Input Data</button>
+  </nav>
+
+  <div class="team-list">
+    <h4>👥 Tim Bazaar Ops</h4>
+    <ul>
+      <li>Ibnu Rijal Tafsiri</li>
+      <li>Putu Widhi Yana</li>
+      <li>Syaifullah</li>
+      <li>Zulpan Hermawan</li>
+      
+    </ul>
+  </div>
+</aside>
 
     <main class="main">
       <header class="topbar">
-        <h1>Dashboard Report</h1>
+        <h1>Dashboard Bazaar Ops</h1>
         <div class="top-actions">
           <select id="filterTanggal"></select>
           <button id="refreshBtn">🔁 Refresh</button>
         </div>
       </header>
 
-      <!-- DASHBOARD (2x2) -->
+      <!-- DASHBOARD -->
       <section id="dashboard" class="panel active">
-        <!-- ROW 1: ORDER (chart+list) | PANIN (chart+list) -->
+        <!-- ROW 1 -->
         <div class="row">
           <div class="card">
             <div class="card-head">
@@ -42,12 +52,10 @@
                 <button class="btn small danger" id="deleteAllOrder">🗑 Hapus Semua</button>
               </div>
             </div>
-
             <div class="chart-row">
               <div class="chart-wrap"><canvas id="chartOrder"></canvas></div>
               <div class="legend-wrap" id="orderLegend"></div>
             </div>
-
             <div class="table-wrap">
               <table id="orderTable"><thead></thead><tbody></tbody></table>
             </div>
@@ -61,19 +69,17 @@
                 <button class="btn small danger" id="deleteAllPanin">🗑 Hapus Semua</button>
               </div>
             </div>
-
             <div class="chart-row">
               <div class="chart-wrap"><canvas id="chartPanin"></canvas></div>
               <div class="legend-wrap" id="paninLegend"></div>
             </div>
-
             <div class="table-wrap">
               <table id="paninTable"><thead></thead><tbody></tbody></table>
             </div>
           </div>
         </div>
 
-        <!-- ROW 2: IR KELUAR (table) | IR MASUK (table) -->
+        <!-- ROW 2 -->
         <div class="row">
           <div class="card">
             <div class="card-head">
@@ -101,13 +107,28 @@
             </div>
           </div>
         </div>
+
+        <!-- ROW 3: UPDATE BAZAAR -->
+        <div class="row">
+          <div class="card wide">
+            <div class="card-head">
+              <h3>🎪 Update Bazaar</h3>
+              <div class="card-actions">
+                <button class="btn small" id="exportBazaar">⬇️ Export</button>
+                <button class="btn small danger" id="deleteAllBazaar">🗑 Hapus Semua</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table id="tableBazaar"><thead></thead><tbody></tbody></table>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- INPUT -->
       <section id="input" class="panel">
         <div class="card">
           <h3>📝 Input Data</h3>
-
           <label>Pilih Kategori:</label>
           <select id="categorySelect">
             <option value="">-- Pilih Kategori --</option>
@@ -115,19 +136,15 @@
             <option value="irKeluar">Data IR Keluar</option>
             <option value="irMasuk">Data IR Masuk</option>
             <option value="panin">Project Bank Panin</option>
+            <option value="bazaar">Update Bazaar</option>
           </select>
-
           <form id="dynamicForm" class="form-card">
             <div class="form-note">Pilih kategori untuk menampilkan form input.</div>
           </form>
-
         </div>
       </section>
-
     </main>
   </div>
-
   <script src="script.js"></script>
 </body>
 </html>
-
