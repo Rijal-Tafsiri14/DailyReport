@@ -290,23 +290,75 @@ function renderIrTable(id, list, keyName){
 
 function renderBazaarTable(list){
   const table = document.getElementById('tableBazaar');
+  if (!table) return;
+
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
-  if(!list.length){ thead.innerHTML=''; tbody.innerHTML='<tr><td colspan="6">Belum ada data</td></tr>'; return; }
-  const headers = ['Tanggal','Nama Bazaar','Tanggal Mulai Event','Tanggal Selesai Event','Progres Event'];
-  thead.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'<th>Aksi</th></tr>';
-  tbody.innerHTML = list.map(item=> `<tr>${headers.map(h=> `<td>${item[h]||''}</td>`).join('')}<td><button class="deleteBtn" data-key="${KEY_BAZAAR}" data-id="${item.id}">🗑️</button></td></tr>`).join('');
-  tbody.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      const id = +e.currentTarget.dataset.id;
-      let arr = load(KEY_BAZAAR);
-      arr = arr.filter(r=>r.id!==id);
-      save(KEY_BAZAAR, arr);
-      populateTanggalOptions(); updateDashboard();
-      alert('🗑️ Data Bazaar dihapus.');
-    });
-  });
+
+  // kosong
+  if (!list.length) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="6">Belum ada data</td></tr>';
+    return;
+  }
+
+  // header tabel
+  const headers = [
+    'Tanggal',
+    'Nama Bazaar',
+    'Tanggal Mulai Event',
+    'Tanggal Selesai Event',
+    'Progres Event'
+  ];
+
+  thead.innerHTML =
+    '<tr>' + headers.map(h => `<th>${h}</th>`).join('') + '<th>Aksi</th></tr>';
+
+  // isi
+  tbody.innerHTML = list.map(item => `
+    <tr data-id="${item.id}">
+      ${headers.map(h => `<td>${item[h] || ''}</td>`).join('')}
+      <td>
+        <button class="editBazaarBtn" data-id="${item.id}">✏️ Edit</button>
+        <button class="deleteBazaarBtn" data-id="${item.id}">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
 }
+// === BAZAAR EDIT & DELETE HANDLER ===
+document.addEventListener('click', function (e) {
+
+  // Delete bazaar
+  if (e.target.classList.contains('deleteBazaarBtn')) {
+    const id = Number(e.target.dataset.id);
+    let arr = load(KEY_BAZAAR);
+    arr = arr.filter(x => x.id !== id);
+    save(KEY_BAZAAR, arr);
+    updateDashboard();
+    alert("🗑️ Data Bazaar dihapus.");
+  }
+
+  // Edit progress bazaar
+  if (e.target.classList.contains('editBazaarBtn')) {
+    const id = Number(e.target.dataset.id);
+    const arr = load(KEY_BAZAAR);
+    const target = arr.find(x => x.id === id);
+    if (!target) return;
+
+    const baru = prompt(
+      `Edit Progres Event untuk "${target['Nama Bazaar']}":`,
+      target['Progres Event']
+    );
+
+    if (baru !== null) {
+      target['Progres Event'] = baru;
+      save(KEY_BAZAAR, arr);
+      updateDashboard();
+      alert("✓ Progres diperbarui!");
+    }
+  }
+
+}); // <--- ini satu-satunya penutup yang benar
 
 // ===== Update dashboard =====
 function updateDashboard(){
